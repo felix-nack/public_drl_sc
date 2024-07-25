@@ -19,36 +19,42 @@ from ...environments.env_utils import get_planning_data_headers
 class a2c():
 
     def __init__(self, env):
-
+        # Initialize the environment
         self.env = env
+        # Check and set A2C-specific settings
         self.settings = self.check_a2c_settings(self.env.settings)
+        # Initialize policy estimator
         self.policy_est = policyEstimator(self.env, self.settings)
+        # Initialize value estimator
         self.value_est = valueEstimator(self.env, self.settings)
+        # Initialize planning data and headers
         self.planning_data = None
         self.planning_data_headers = None
         # Set up containers for policy, value, entropy, and total loss
-        # TODO: see if namedtuple or other modules in containers yield better
-        # performance for data logging.
+        # TODO: see if namedtuple or other modules in containers yield better performance for data logging.
         self.loss, self.policy_loss, self.policy_grads = [], [], []
         self.entropy_loss, self.value_loss, self.value_grads = [], [], []
         self.kl_div = []
 
     def check_a2c_settings(self, settings):
-        # Add a2c specific settings here
+        # Add A2C-specific settings here
         return settings
 
     def test(self, checkpoint, n_tests=10):
+        # Define the path to the scenarios directory
         path = Path('scenarios')
+        # Create the scenarios directory if it does not exist
         if os.path.exists(path) == False:
             path.mkdir(parents=True, exist_ok=True)
 
-        # Get scenarios from order_book data
+        # Get scenarios from order_book data files in the scenarios directory
         order_books = [s for s in os.listdir(path) if 'order' in s]
 
         # TODO: Build a scenario generating function in case none are found
         test_data = pd.DataFrame()
         count = 0
         for s in order_books:
+            # Load the order book for the current scenario
             ob_path = os.path.join('scenarios', s)
             self.env.reset()
             self.env.order_book = pickle.load(open(ob_path, 'rb'))
@@ -57,17 +63,24 @@ class a2c():
             schedule = None
             test_planning_data = []
             for day in range(self.env.n_days):
+                # Schedule the network and get planning data
                 schedule, _planning_data = network_scheduler(self.env, 
                     self.policy_est, schedule, test=True)
+                # Step the environment with the current schedule
                 schedule = self.env.step(schedule)
+                # Append the planning data for the current day
                 test_planning_data.append(_planning_data)
+        
+            # Calculate customer service level
             cs_level = self.env.get_cs_level()
 
+            # Calculate inventory cost, late penalties, and shipment rewards
             inv_cost = np.round(sum(self.env.containers.inventory_cost), 0)
             late_penalties = np.round(sum(self.env.containers.late_penalties), 0)
             shipment_rewards = np.round(sum(self.env.containers.shipment_rewards), 0)
             total_rewards = inv_cost + late_penalties + shipment_rewards
 
+            # Create a dictionary with the test data for the current scenario
             test_data_dict = {'scenario': ob_path.split('_')[-1].split('.')[0],
                          'algo': self.env.settings['RL_ALGO'],
                          'product_availability': np.round(cs_level[0], 3),
@@ -77,11 +90,15 @@ class a2c():
                          'inv_cost': inv_cost,
                          'late_penalties': late_penalties,
                          'shipment_rewards': shipment_rewards}
+            # Append the test data to the DataFrame
             test_data = pd.concat([test_data, pd.DataFrame(test_data_dict, index=[count])])
             count += 1
-        # Save test data
+    
+        # Save the test data to a CSV file
         test_data.to_csv(self.settings['DATA_PATH'] + '/checkpoint_test_' \
             + str(checkpoint) + '.csv')
+    
+        # Save the model checkpoints if the checkpoint is not 100
         if checkpoint != 100:
             torch.save(self.value_est.state_dict(), 
                 self.settings['DATA_PATH'] + '/critic_' + str(checkpoint) + '.pt')
