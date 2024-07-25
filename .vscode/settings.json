@@ -1,0 +1,7 @@
+{
+    "terminal.integrated.env.osx": {
+        
+        "VIRTUAL_ENV": "/Benutzer:innen/felixnack/myenv",
+        "PATH": "/Benutzer:innen/felixnack/myenv/bin:${env:PATH}"
+    }
+}
